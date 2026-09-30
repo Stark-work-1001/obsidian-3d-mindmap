@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-3d-mindmap",
+	"name": "3D Mind Map",
+	"version": "1.15.0",
+	"minAppVersion": "1.4.0",
+	"description": "把当前笔记的大纲层级渲染为可交互的 3D 思维导图（Three.js + d3-force-3d）。二十种布局（力导向 / 径向 / 层级树 / 键角树 / 羽状纤维束 / RDF 壳层 / 能级壳层 / 轨道瓣 / 无规线团 / 金刚石格点 + 十档参考图布局：圆锥塔、星系盘、射线串珠、层板、垂帘、蒲公英球、星云团簇、点阵填充、星尘、星芒社区），收进一颗下拉按钮按物理原型分组直选。文档名称只显示在标题牌上（不充当节点）、一级标题之间互相连线、正文标题从第 1 级起算（核心名可用 frontmatter 或文件名标记显式声明），支持 3D 内编辑与 Markdown 双向实时同步、按标签/文本规则分组着色与过滤、节点钉住与关联弧线、辉光渲染、球径独立控件、只读大纲预览与 Obsidian 大纲联动、KaTeX 公式与节点备注。",
+	"author": "Stark-work-1001",
+	"authorUrl": "https://github.com/Stark-work-1001",
+	"fundingUrl": "",
+	"isDesktopOnly": false
+}

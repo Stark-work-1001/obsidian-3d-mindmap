@@ -1,0 +1,962 @@
+/* obsidian-3d-mindmap —— 全部颜色取自 Obsidian CSS 变量（S4 主题适配）
+   容器尺寸用 !important 加固：第三方主题常给 .view-content 加 padding / display:flex，
+   会让 WebGL 画布塌成 0 高（light-mindmap 同款踩坑）。 */
+
+.om3d-root {
+	position: relative !important;
+	width: 100% !important;
+	height: 100% !important;
+	min-height: 320px;
+	overflow: hidden;
+	background: var(--om3d-bg, var(--background-primary));
+	color: var(--om3d-text, var(--text-normal));
+	font-family: var(--font-interface, inherit);
+	user-select: none;
+	-webkit-user-select: none;
+	touch-action: none;
+}
+
+.om3d-canvas-host {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	contain: layout style;
+	cursor: grab;
+}
+
+.om3d-canvas-host.is-hover {
+	cursor: pointer;
+}
+
+/* 关联模式：整块画布给一个「点两个节点连线」的十字光标提示 */
+.om3d-canvas-host.is-assoc,
+.om3d-canvas-host.is-assoc.is-hover {
+	cursor: crosshair;
+}
+
+.om3d-status.is-assoc {
+	border-color: var(--interactive-accent, #7c3aed);
+	color: var(--interactive-accent, #7c3aed);
+}
+
+.om3d-canvas {
+	display: block;
+	width: 100% !important;
+	height: 100% !important;
+	outline: none;
+}
+
+/* 标签层：DOM 覆盖，transform 定位，重排关在本层内 */
+.om3d-labels {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	contain: layout style;
+	overflow: hidden;
+	z-index: 2;
+}
+
+.om3d-label {
+	position: absolute;
+	top: 0;
+	left: 0;
+	max-width: 30ch;
+	padding: 1px 7px;
+	border-radius: 7px;
+	background: color-mix(in srgb, var(--om3d-panel, var(--background-secondary)) 82%, transparent);
+	border: 1px solid color-mix(in srgb, var(--om3d-line, var(--background-modifier-border)) 60%, transparent);
+	color: var(--om3d-text, var(--text-normal));
+	font-size: 13px;
+	line-height: 1.35;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	pointer-events: auto;
+	will-change: transform, opacity;
+	transition: opacity 90ms linear;
+	box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+}
+
+.om3d-label[data-kind="heading"] {
+	font-weight: 600;
+	border-color: color-mix(in srgb, var(--om3d-accent, var(--interactive-accent)) 45%, transparent);
+}
+
+.om3d-label[data-kind="root"] {
+	font-weight: 700;
+	background: color-mix(in srgb, var(--om3d-accent, var(--interactive-accent)) 18%, var(--om3d-panel, var(--background-secondary)));
+}
+
+.om3d-label.is-emphasis {
+	outline: 2px solid var(--om3d-accent, var(--interactive-accent));
+	outline-offset: 1px;
+	z-index: 3;
+}
+
+.om3d-label.is-dimmed {
+	opacity: 0.14 !important;
+	filter: grayscale(0.8);
+}
+
+.om3d-label-text {
+	pointer-events: none;
+}
+
+/* 标签整块不吃鼠标事件（否则会挡住拖动球体），但里面的链接要真的能点：
+   继承下来的 pointer-events:none 曾让 .om3d-wikilink 带着手型光标却毫无响应。 */
+.om3d-label-text .om3d-wikilink,
+.om3d-label-text .om3d-link {
+	pointer-events: auto;
+}
+
+.om3d-task {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	margin-right: 5px;
+	vertical-align: -1px;
+	border: 1.5px solid var(--om3d-muted, #888);
+	border-radius: 2px;
+	background: transparent;
+}
+
+/* 已完成的任务：CSS 画的对勾，不依赖 ☑ 这类可能缺字的字形 */
+.om3d-task.is-done {
+	position: relative;
+	border-color: var(--om3d-accent, #7c3aed);
+	background: color-mix(in srgb, var(--om3d-accent, #7c3aed) 22%, transparent);
+}
+
+.om3d-task.is-done::after {
+	content: "";
+	position: absolute;
+	left: 2px;
+	top: 0;
+	width: 4px;
+	height: 7px;
+	border: solid var(--om3d-text, #222);
+	border-width: 0 1.6px 1.6px 0;
+	transform: rotate(42deg);
+}
+
+/* 备注标记：一个小圆点（原来的 ✎ 在 Obsidian 字体栈里可能没字形） */
+.om3d-note-dot {
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	margin-left: 5px;
+	vertical-align: 2px;
+	border-radius: 50%;
+	background: var(--om3d-accent, #7c3aed);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--om3d-accent, #7c3aed) 26%, transparent);
+}
+
+/* 钉住的重点节点：菱形角标，和备注点一眼能分开 */
+.om3d-pin {
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	margin-left: 5px;
+	vertical-align: 2px;
+	background: #f5c542;
+	transform: rotate(45deg);
+	box-shadow: 0 0 4px rgba(245, 197, 66, 0.85);
+}
+
+/* 文档名按钮上的「页」图标：CSS 画，不用 emoji */
+.om3d-docicon {
+	display: inline-block;
+	width: 8px;
+	height: 11px;
+	margin-right: 5px;
+	vertical-align: -1px;
+	border: 1.4px solid currentColor;
+	border-radius: 1.5px 3px 1.5px 1.5px;
+	background: linear-gradient(to bottom, transparent 45%, currentColor 45%, currentColor 55%, transparent 55%);
+}
+
+.om3d-badge {
+	margin-left: 5px;
+	padding: 0 5px;
+	border-radius: 8px;
+	background: var(--om3d-accent, var(--interactive-accent));
+	color: var(--text-on-accent, #fff);
+	font-size: 0.75em;
+}
+
+.om3d-note-dot {
+	margin-left: 4px;
+	opacity: 0.7;
+}
+
+.om3d-code {
+	font-family: var(--font-monospace, monospace);
+	background: color-mix(in srgb, var(--text-muted, #888) 18%, transparent);
+	border-radius: 4px;
+	padding: 0 3px;
+}
+
+.om3d-wikilink,
+.om3d-link {
+	color: var(--link-color, var(--interactive-accent));
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+.om3d-formula-error {
+	color: var(--color-red, #e5484d);
+	background: color-mix(in srgb, var(--color-red, #e5484d) 14%, transparent);
+	border-radius: 3px;
+	padding: 0 2px;
+}
+
+.om3d-formula-block {
+	display: inline-block;
+}
+
+/* KaTeX 在标签里的尺寸收敛 */
+.om3d-label .katex {
+	font-size: 1.02em;
+}
+
+.om3d-label .katex-display {
+	margin: 0;
+}
+
+/* 工具条 */
+.om3d-toolbar {
+	position: absolute;
+	top: 8px;
+	left: 8px;
+	right: 8px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	z-index: 5;
+	pointer-events: none;
+}
+
+.om3d-toolgroup {
+	display: flex;
+	gap: 2px;
+	padding: 3px;
+	border-radius: 9px;
+	background: color-mix(in srgb, var(--om3d-panel, var(--background-secondary)) 88%, transparent);
+	border: 1px solid var(--om3d-line, var(--background-modifier-border));
+	pointer-events: auto;
+}
+
+.om3d-btn {
+	appearance: none;
+	border: none;
+	background: transparent;
+	color: var(--om3d-text, var(--text-normal));
+	font-size: 12px;
+	padding: 3px 8px;
+	border-radius: 6px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.om3d-btn:hover {
+	background: color-mix(in srgb, var(--om3d-accent, var(--interactive-accent)) 18%, transparent);
+}
+
+.om3d-btn.is-active {
+	background: var(--om3d-accent, var(--interactive-accent));
+	color: var(--text-on-accent, #fff);
+}
+
+.om3d-btn.is-disabled,
+.om3d-btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.om3d-crumb {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	pointer-events: auto;
+}
+
+.om3d-crumb-text {
+	font-size: 12px;
+	opacity: 0.85;
+}
+
+/* 搜索 */
+.om3d-search {
+	position: absolute;
+	top: 48px;
+	right: 10px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px;
+	border-radius: 9px;
+	background: var(--om3d-panel, var(--background-secondary));
+	border: 1px solid var(--om3d-line, var(--background-modifier-border));
+	z-index: 6;
+}
+
+.om3d-search-input {
+	width: 180px;
+	font-size: 12px;
+}
+
+.om3d-search-count {
+	font-size: 11px;
+	opacity: 0.7;
+	min-width: 42px;
+	text-align: center;
+}
+
+/* 状态栏 */
+.om3d-status {
+	position: absolute;
+	bottom: 6px;
+	left: 10px;
+	font-size: 11px;
+	opacity: 0.72;
+	z-index: 4;
+	pointer-events: none;
+	max-width: 60%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.om3d-status.is-warn {
+	color: var(--color-orange, #e8590c);
+	opacity: 1;
+}
+
+/* 节点编辑浮层 */
+.om3d-node-editor {
+	position: absolute;
+	z-index: 20;
+	min-width: 160px;
+	max-width: 420px;
+	padding: 4px 8px;
+	font-size: 14px;
+	font-family: var(--font-interface, inherit);
+	color: var(--text-normal);
+	background: var(--background-primary);
+	border: 2px solid var(--interactive-accent);
+	border-radius: 7px;
+	box-shadow: 0 4px 18px rgb(0 0 0 / 28%);
+	resize: none;
+	overflow: hidden;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+/* ---------- 大纲预览面板（只读，1.6.0）：视图左侧的分级树 ---------- */
+
+.om3d-outline-panel {
+	position: absolute;
+	/* 工具条会换行，44px 这个老数值早就顶不住：高度由 GraphView 量出来后写进 --om3d-bar-h */
+	top: var(--om3d-bar-h, 52px);
+	left: 10px;
+	bottom: auto;
+	max-height: calc(100% - var(--om3d-bar-h, 52px) - 40px);
+	height: 42%;
+	width: min(300px, 34%);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 6px 8px 10px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--om3d-panel, var(--background-secondary)) 96%, transparent);
+	border: 1px solid var(--om3d-line, var(--background-modifier-border));
+	box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
+	z-index: 7;
+	overflow: hidden;
+	contain: layout style;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+.om3d-outline-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+	flex: 0 0 auto;
+}
+
+.om3d-outline-title {
+	font-weight: 600;
+	font-size: 13px;
+	color: var(--om3d-text, var(--text-normal));
+}
+
+.om3d-outline-hint {
+	font-size: 11px;
+	color: var(--om3d-muted, var(--text-muted));
+}
+
+.om3d-outline-body {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	font-size: 12.5px;
+	line-height: 1.45;
+}
+
+.om3d-outline-empty {
+	padding: 8px;
+	color: var(--om3d-muted, var(--text-muted));
+}
+
+/* 列表本身就是「分级」：子级套一层 ul，靠左 guía 线缩进，不用行内 padding 伪装层级 */
+.om3d-outline-tree,
+.om3d-outline-sub {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.om3d-outline-sub {
+	margin-left: 9px;
+	padding-left: 5px;
+	border-left: 1px solid color-mix(in srgb, var(--om3d-line, var(--background-modifier-border)) 80%, transparent);
+}
+
+.om3d-outline-tree > li,
+.om3d-outline-sub > li {
+	margin: 0;
+}
+
+.om3d-outline-row {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	/* 跳级的空档如实缩进：--om3d-skip 由 OutlinePanel 按父→子环号差写入 */
+	margin-left: calc(var(--om3d-skip, 0) * 14px);
+	width: calc(100% - var(--om3d-skip, 0) * 14px);
+	margin-top: 1px;
+	margin-bottom: 1px;
+	padding: 2px 4px;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--om3d-text, var(--text-normal));
+	font-size: 12.5px;
+	font-weight: 400;
+	line-height: 1.4;
+	text-align: left;
+	cursor: pointer;
+}
+
+.om3d-outline-row:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+.om3d-outline-row.is-active {
+	border-color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+	font-weight: 600;
+}
+
+/* 被折叠遮住的分支：仍然列出（预览要看全树），但压暗并标出隐藏的子孙数 */
+.om3d-outline-row.is-hidden {
+	opacity: 0.52;
+	font-style: italic;
+}
+
+.om3d-outline-kind {
+	flex: 0 0 auto;
+	min-width: 18px;
+	padding: 0 3px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--om3d-muted, var(--text-muted)) 22%, transparent);
+	color: var(--om3d-muted, var(--text-muted));
+	font-size: 10px;
+	text-align: center;
+}
+
+.om3d-outline-text {
+	flex: 1 1 auto;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.om3d-outline-badge {
+	flex: 0 0 auto;
+	font-size: 10px;
+	color: var(--om3d-muted, var(--text-muted));
+}
+
+/* 备注面板 */
+.om3d-note-panel {
+	position: absolute;
+	/* 同上：备注面板也从工具条下沿起，并限高，把画面下方留给 3D */
+	top: var(--om3d-bar-h, 52px);
+	right: 10px;
+	bottom: auto;
+	max-height: calc(100% - var(--om3d-bar-h, 52px) - 40px);
+	height: 48%;
+	width: min(360px, 42%);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--om3d-panel, var(--background-secondary)) 96%, transparent);
+	border: 1px solid var(--om3d-line, var(--background-modifier-border));
+	box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
+	z-index: 7;
+	overflow: hidden;
+	contain: layout style;
+}
+
+.om3d-note-header {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.om3d-note-title {
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.om3d-note-dirty.is-dirty {
+	color: var(--text-warning, #e5a50a);
+	font-weight: 600;
+}
+
+.om3d-note-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.om3d-note-hint {
+	font-size: 11px;
+	opacity: 0.65;
+}
+
+.om3d-note-body {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	font-size: 13px;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+.om3d-note-editor {
+	/* 常驻可编辑（1.6.0）：不再是「点编辑才出现的隐藏框」 */
+	flex: 1 1 auto;
+	display: block;
+	min-height: 72px;
+	font-family: var(--font-monospace, monospace);
+	font-size: 12px;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+.om3d-note-actions {
+	display: flex;
+	gap: 6px;
+	justify-content: flex-end;
+}
+
+.om3d-note-btn {
+	font-size: 12px;
+	padding: 2px 10px;
+	border-radius: 6px;
+	border: 1px solid var(--om3d-line, var(--background-modifier-border));
+	background: transparent;
+	color: var(--om3d-text, var(--text-normal));
+	cursor: pointer;
+}
+
+.om3d-note-btn:hover {
+	background: color-mix(in srgb, var(--om3d-accent, var(--interactive-accent)) 16%, transparent);
+}
+
+/* 降级提示 */
+.om3d-fallback {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	padding: 24px;
+	text-align: center;
+	font-size: 14px;
+	line-height: 1.6;
+	color: var(--text-muted);
+	z-index: 8;
+	background: var(--om3d-bg, var(--background-primary));
+}
+
+.om3d-outline-fallback {
+	max-height: 60%;
+	overflow-y: auto;
+	text-align: left;
+	font-size: 13px;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+.om3d-outline-fallback li {
+	list-style: none;
+	padding: 1px 0;
+}
+
+/* 深色主题微调 */
+.om3d-root.is-dark .om3d-label {
+	box-shadow: 0 1px 4px rgb(0 0 0 / 55%);
+}
+
+/* 窄屏（移动端）：面板改为底部抽屉 */
+@media (max-width: 700px) {
+	.om3d-note-panel {
+		top: auto;
+		left: 8px;
+		right: 8px;
+		width: auto;
+		height: 42%;
+	}
+
+	/* 大纲预览让位：两块都在底部会互相盖住，所以窄屏下它占上半截 */
+	.om3d-outline-panel {
+		top: var(--om3d-bar-h, 52px);
+		left: 8px;
+		right: 8px;
+		bottom: auto;
+		width: auto;
+		height: 28%;
+		max-height: 28%;
+	}
+
+	.om3d-toolbar {
+		font-size: 11px;
+	}
+
+	.om3d-search-input {
+		width: 120px;
+	}
+}
+
+/* ---------- v1.1 交互补充：悬停备注卡片 / 布局缩写 chip / 关联文档标签 ---------- */
+
+.om3d-hovercard {
+	position: absolute;
+	z-index: 9;
+	max-height: 46%;
+	overflow: hidden;
+	padding: 8px 10px;
+	border-radius: 9px;
+	background: color-mix(in srgb, var(--om3d-panel, var(--background-secondary)) 97%, transparent);
+	border: 1px solid var(--om3d-line, var(--background-modifier-border));
+	box-shadow: 0 8px 26px rgb(0 0 0 / 26%);
+	font-size: 12.5px;
+	line-height: 1.5;
+	color: var(--om3d-text, var(--text-normal));
+	pointer-events: none;
+	contain: layout style;
+}
+
+.om3d-hovercard-title {
+	font-weight: 600;
+	margin-bottom: 4px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid color-mix(in srgb, var(--om3d-line, var(--background-modifier-border)) 70%, transparent);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.om3d-hovercard-body :first-child {
+	margin-top: 0;
+}
+
+.om3d-hovercard-body :last-child {
+	margin-bottom: 0;
+}
+
+.om3d-hovercard-body p,
+.om3d-hovercard-body ul,
+.om3d-hovercard-body li {
+	margin: 0.25em 0;
+}
+
+.om3d-chip {
+	min-width: 26px;
+	padding: 3px 5px;
+	text-align: center;
+	font-weight: 600;
+}
+
+.om3d-grouplabel {
+	align-self: center;
+	padding: 0 4px 0 2px;
+	font-size: 10.5px;
+	opacity: 0.55;
+	letter-spacing: 0.04em;
+}
+
+.om3d-doclabel {
+	max-width: 22ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 600;
+	border: 1px dashed color-mix(in srgb, var(--om3d-accent, var(--interactive-accent)) 55%, transparent) !important;
+}
+
+/* ---------------------------------------------------------- 下拉管理菜单 */
+.om3d-menu {
+	z-index: 90;
+	min-width: 232px;
+	max-width: 340px;
+	max-height: min(62vh, calc(100% - 12px));
+	overscroll-behavior: contain;
+	overflow-y: auto;
+	padding: 4px;
+	border-radius: 9px;
+	border: 1px solid var(--om3d-line, #d0d0d0);
+	background: var(--om3d-panel, #fff);
+	box-shadow: 0 8px 26px rgb(0 0 0 / 22%);
+	font-size: 12.5px;
+}
+
+.om3d-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	margin: 0;
+	padding: 5px 8px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--om3d-text, #222);
+	text-align: left;
+	cursor: pointer;
+}
+
+.om3d-menu-item:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--om3d-accent, #7c3aed) 14%, transparent);
+}
+
+.om3d-menu-item:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.om3d-menu-label {
+	flex: 1 1 auto;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.om3d-menu-hint {
+	flex: 0 0 auto;
+	opacity: 0.62;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+
+/* 行首色块（「线色」弹层）：带一圈淡描边，浅灰色块在浅底上才不会看不见 */
+/* 线色按钮：左侧色带 = 当前生效的连线颜色（--om3d-swatch 由工具条写入） */
+.om3d-btn.om3d-swatchbtn {
+	border-left: 4px solid var(--om3d-swatch, #8a8a8a);
+	padding-left: 7px;
+}
+
+.om3d-menu-swatch {
+	flex: 0 0 auto;
+	width: 11px;
+	height: 11px;
+	border-radius: 50%;
+	margin-right: 6px;
+	border: 1px solid rgba(127, 127, 127, 0.55);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.om3d-menu-item.is-checked .om3d-menu-label::before {
+	content: "✓";
+	margin-right: 5px;
+	color: var(--om3d-accent, #7c3aed);
+}
+
+.om3d-menu-item.is-danger .om3d-menu-label {
+	color: var(--color-red, #c53b3b);
+}
+
+.om3d-menu-act {
+	flex: 0 0 auto;
+	padding: 1px 6px;
+	border-radius: 5px;
+	border: 1px solid var(--om3d-line, #d0d0d0);
+	opacity: 0.8;
+	cursor: pointer;
+}
+
+.om3d-menu-act:hover {
+	opacity: 1;
+	border-color: var(--om3d-accent, #7c3aed);
+}
+
+.om3d-menu-act.is-danger {
+	color: var(--color-red, #c53b3b);
+}
+
+.om3d-menu-sep {
+	margin: 4px 2px;
+	border-top: 1px solid var(--om3d-line, #d0d0d0);
+}
+
+.om3d-menu-heading {
+	padding: 4px 8px 2px;
+	opacity: 0.6;
+	font-size: 11px;
+	letter-spacing: 0.02em;
+}
+
+/* 弹层里的滑杆行（「球径」用）：左标签 + 滑杆 + 右读数，配色全走变量，自定义背景下也不糊 */
+.om3d-menu-slider {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+}
+
+.om3d-menu-slider-label {
+	flex: 0 0 auto;
+	font-size: 12px;
+	opacity: 0.8;
+}
+
+.om3d-menu-range {
+	flex: 1 1 auto;
+	min-width: 120px;
+	accent-color: var(--interactive-accent, #1c7ed6);
+	cursor: pointer;
+}
+
+.om3d-menu-slider-value {
+	flex: 0 0 auto;
+	font-size: 11.5px;
+	font-variant-numeric: tabular-nums;
+	opacity: 0.85;
+	min-width: 3.4em;
+	text-align: right;
+}
+
+.om3d-menubtn::after {
+	/* 下拉开关的箭头必须看得见：早先这里写死 content: ""，
+	   按钮看起来和普通动作按钮没区别，没人知道它点开是一列可滚的清单 */
+	content: " ▾";
+	opacity: 0.65;
+	font-size: 11px;
+}
+
+.om3d-menubtn.is-open::after {
+	content: " ▴";
+	opacity: 1;
+}
+
+.om3d-menubtn[aria-expanded="true"] {
+	border-color: var(--interactive-accent, #1c7ed6);
+}
+
+/* 工具条里的小读数（如「距 62」）：不是按钮，只是把当前档位摆在眼前 */
+.om3d-metric {
+	font-size: 11.5px;
+	opacity: 0.75;
+	padding: 0 4px;
+	align-self: center;
+	font-variant-numeric: tabular-nums;
+}
+
+/* 主按钮旁的小 ▾：视觉上像同一个控件的两半，但只负责弹管理菜单，不夹带动作 */
+.om3d-btn-caret {
+	padding: 3px 5px;
+	margin-left: -1px;
+	font-size: 11px;
+	line-height: 1;
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+	opacity: 0.7;
+}
+
+.om3d-btn-caret:hover,
+.om3d-btn-caret.is-active {
+	opacity: 1;
+}
+
+/* ------------------------------------------------- 备注面板里的改名输入 */
+.om3d-title-row {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+
+.om3d-title-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 4px 0 2px;
+	padding: 3px 7px;
+	border-radius: 6px;
+	border: 1px solid var(--om3d-line, #d0d0d0);
+	background: transparent;
+	color: var(--om3d-text, #222);
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.om3d-title-input:focus {
+	outline: 2px solid var(--om3d-accent, #7c3aed);
+	outline-offset: -1px;
+}
+
+.om3d-title-hint {
+	font-weight: 400;
+	opacity: 0.66;
+}
+
+/* --------------------------------------------------------------------------
+   标题牌（1.8.0 · 根节点降级）
+   根球不再充当树的一层：文件名/书名改显示在画布上方一块胶囊里，点一下回到全景。
+   起点用量出来的工具条下沿 --om3d-bar-h（与左右两块面板同一套，见 ADR-025 修订），
+   按钮换行到三行时也不会被压住。
+   -------------------------------------------------------------------------- */
+.om3d-title-plate {
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%);
+	top: calc(var(--om3d-bar-h, 44px) + 10px);
+	z-index: 6;
+	max-width: min(72%, 560px);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	padding: 3px 13px;
+	border-radius: 999px;
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	color: var(--om3d-text, var(--text-normal));
+	background: color-mix(in srgb, var(--om3d-panel, var(--background-secondary)) 62%, transparent);
+	border: 1px solid color-mix(in srgb, var(--om3d-line, var(--background-modifier-border)) 70%, transparent);
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+	cursor: pointer;
+	backdrop-filter: blur(2px);
+}
+
+.om3d-title-plate:hover {
+	border-color: var(--om3d-accent, var(--interactive-accent));
+	background: color-mix(in srgb, var(--om3d-panel, var(--background-secondary)) 82%, transparent);
+}
